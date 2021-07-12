@@ -28,9 +28,9 @@ locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
 s = requests.Session()
 
 if not os.path.exists("database.sqlite"):
-    # Prevent optimizing
     import sqlite3_setup
-    pass
+
+    sqlite3_setup.init()
 with sqlite3.connect("database.sqlite") as connection:  # Will not auto close, but makes sure to have consistent state
     pass
 
