@@ -1,18 +1,17 @@
+import html
+import json
 import locale
+import os
 import re
-import sys
-import traceback
+import sqlite3
 import urllib.parse
 from datetime import datetime
-from pprint import pprint
 
 import discord
-from discord.ext import commands, tasks
 import requests
-import json
+from astropy.table import Table
 from bs4 import BeautifulSoup
-import html
-from astropy.table import Table, join
+from discord.ext import commands
 
 from secrets import TOKEN
 
@@ -28,10 +27,10 @@ re_all = re.compile(
 locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
 s = requests.Session()
 
-with open("presences.json") as f:
-    bot.presences = json.load(f)
-with open("stats.json") as f:
-    bot.stats = json.load(f)
+if not os.path.exists("database.sqlite"):
+    pass
+with sqlite3.connect("database.sqlite") as connection:  # Will not auto close, but makes sure to have consistent state
+    pass
 
 bot.worlds = ["Algarion", "Barkladesh", "Cartegon", "Darakesh"]
 bot.worlds_short = {
@@ -55,23 +54,25 @@ async def on_ready():
     await bot.change_presence(
         activity=discord.Game(name="World of Dungeons", type=2, url="https://world-of-dungeons.de"))
     print('------')
-    save_to_disk.start()
-    pprint(bot.presences)
-    print('------')
-    pprint(bot.stats)
-    print('------')
 
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     if after.raw_status in ("online", "dnd", "idle"):
-        bot.presences |= {str(after.id): datetime.now().strftime("%x %X")}
+        connection.execute(f"""
+            INSERT INTO presences (id, time) VALUES ('{str(after.id)}','{datetime.now().strftime('%x %X')}')
+            ON CONFLICT(id) DO UPDATE SET time = '{datetime.now().strftime('%x %X')}'
+            """)
+        connection.commit()
 
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    current_reaction_count = bot.stats["reaction_count"].get(str(payload.member.id), 0)
-    bot.stats["reaction_count"] |= {str(payload.member.id): current_reaction_count + 1}
+    connection.execute(f"""
+        INSERT INTO stats (guild, id, reactions) VALUES ('{str(payload.guild_id)}','{str(payload.member.id)}',1)
+        ON CONFLICT(guild, id) DO UPDATE SET reactions = reactions+1
+        """)
+    connection.commit()
 
     if payload.message_id != bot.role_message_id:
         return
@@ -120,9 +121,15 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 @bot.event
 async def on_message(message: discord.Message):
     author = message.author
-    bot.presences |= {str(author.id): datetime.now().strftime("%x %X")}
-    current_message_count = bot.stats["message_count"].get(str(author.id), 0)
-    bot.stats["message_count"] |= {str(author.id): current_message_count + 1}
+    connection.execute(f"""
+        INSERT INTO presences (id, time) VALUES ('{str(author.id)}','{datetime.now().strftime('%x %X')}')
+        ON CONFLICT(id) DO UPDATE SET time = '{datetime.now().strftime('%x %X')}'
+        """)
+    connection.execute(f"""
+        INSERT INTO stats (guild, id, messages) VALUES ('{str(message.guild.id)}','{str(author.id)}',1)
+        ON CONFLICT(guild, id) DO UPDATE SET messages = messages+1
+        """)
+    connection.commit()
     embed = discord.Embed()
     processed = []
     for matches in re_all.finditer(message.content):
@@ -195,37 +202,24 @@ async def seen(ctx: commands.Context, member: discord.Member):
     if current_status in ("online", "dnd", "idle"):
         await ctx.send(f'{member.name} ist gerade online!')
     else:
-        last_seen = bot.presences.get(str(member.id), "<Unbekannt>")
+        last_seen = connection.execute(f"SELECT time FROM presences WHERE id = '{str(member.id)}'").fetchone()[0]
         await ctx.send(f'{member.name} wurde zuletzt am {last_seen} gesehen!')
 
 
 @bot.command()
-@commands.cooldown(1, 30, commands.BucketType.user)
 async def stats(ctx: commands.Context):
     """Nutzungsstatistiken. 30 Sekunden Abklingzeit."""
-    data1 = Table(names=("Nutzer", "Nachrichten",), dtype=('str', 'int32'))
-    data2 = Table(names=("Nutzer", "Reactions"), dtype=('str', 'int32'))
-    for key, value in bot.stats["message_count"].items():
+    data = Table(names=("Nutzer", "Nachrichten", "Reactions"), dtype=('str', 'int32', 'int32'))
+    rs = connection.execute(f"""
+        SELECT id,messages,reactions FROM stats WHERE guild = '{str(ctx.guild.id)}'
+        """).fetchall()
+    for key, messages, reactions in rs:
         member = ctx.guild.get_member(int(key))
         if member:
-            data1.add_row((member.name, value))
-    for key, value in bot.stats["reaction_count"].items():
-        member = ctx.guild.get_member(int(key))
-        if member:
-            data2.add_row((member.name, value))
-    data = join(data1, data2, join_type='outer').filled(0)
-    await ctx.send(f"```\n{data}\n\nLetzter Reset: {bot.stats['last_wipe']}```")
-
-
-@stats.error
-async def stats_error(ctx: commands.Context, error):
-    if isinstance(error, commands.CommandOnCooldown):
-        em = discord.Embed(title=f"Langsam mit den jungen Pferden!",
-                           description=f"Versuche es erneut in: {error.retry_after:.2f}s.")
-        await ctx.send(embed=em)
-    else:
-        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+            messages = messages if messages is not None else 0
+            reactions = reactions if reactions is not None else 0
+            data.add_row((member.name, messages, reactions))
+    await ctx.send(f"```\n{data}\n```")
 
 
 @bot.command(hidden=True)
@@ -238,32 +232,17 @@ async def post(ctx: commands.Context, *message: str):
 @bot.command(hidden=True)
 async def wipe_stats(ctx: commands.Context):
     if await bot.is_owner(ctx.author):
-        bot.stats = {
-            "last_wipe": datetime.now().strftime("%x %X"),
-            "message_count": {
-                str(bot.user.id): 0
-            },
-            "reaction_count": {
-                str(bot.user.id): 0
-            },
-        }
+        connection.execute(f"DELETE FROM stats WHERE guild = '{ctx.guild.id}'")
+        connection.commit()
         await ctx.message.delete()
-
-
-@tasks.loop(seconds=60)
-async def save_to_disk():
-    with open("presences.json", "w") as f:
-        json.dump(bot.presences, f)
-    with open("stats.json", "w") as f:
-        json.dump(bot.stats, f)
 
 
 def wiki_result_to_embed(embed: discord.Embed, r: requests.Response):
     for result in json.loads(r.text)['query']['search']:
         text = f"""
-                   {html.unescape(BeautifulSoup(result['snippet'], 'html.parser').get_text())}
-                   Direktlink: [{result['title']}](https://world-of-dungeons.de/ency/{result['title'].replace(' ', '_')})
-                   """
+           {html.unescape(BeautifulSoup(result['snippet'], 'html.parser').get_text())}
+           Direktlink: [{result['title']}](https://world-of-dungeons.de/ency/{result['title'].replace(' ', '_')})
+           """
         embed.add_field(name=result['title'], value=text, inline=False)
 
 
