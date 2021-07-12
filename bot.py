@@ -19,7 +19,8 @@ intents = discord.Intents.all()
 
 help_command = commands.DefaultHelpCommand(no_category='Commands')
 
-bot = commands.Bot(command_prefix='!', intents=intents, help_command=help_command)
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=help_command,
+                   activity=discord.Game(name="World of Dungeons", type=2, url="https://world-of-dungeons.de"))
 
 re_all = re.compile(
     "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>[0-9]+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]")
@@ -42,19 +43,10 @@ bot.worlds_short = {
     "wd": "Darakesh",
 }
 
-bot.role_message_id = 862294618875101184
-bot.emoji_to_role = {
-    discord.PartialEmoji(name="AL", id=862294499563929630): 862293144728502274,
-    discord.PartialEmoji(name="CA", id=862295452116451328): 862293503002411020,
-    discord.PartialEmoji(name="DA", id=862295470226407424): 862293595440676865,
-}
-
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user} (ID: {bot.user.id})')
-    await bot.change_presence(
-        activity=discord.Game(name="World of Dungeons", type=2, url="https://world-of-dungeons.de"))
     print('------')
 
 
@@ -76,52 +68,44 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         """)
     connection.commit()
 
-    if payload.message_id != bot.role_message_id:
-        return
-
-    guild = bot.get_guild(payload.guild_id)
-    if guild is None:
-        return
-
-    try:
-        role_id = bot.emoji_to_role[payload.emoji]
-    except KeyError:
-        return
-
-    role = guild.get_role(role_id)
-    if role is None:
-        return
-
-    await payload.member.add_roles(role)
+    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = '{payload.message_id}'").fetchone()
+    if rs:
+        symbol_base = 127462
+        symbol = payload.emoji.name
+        option_number = ord(symbol) - symbol_base
+        dvote = json.loads(rs[0])
+        if dvote["active"]:
+            vote_message: discord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
+            for option in dvote["options"]:
+                if option["number"] == option_number:
+                    option["count"] += 1
+            connection.execute(f"UPDATE vote SET parameters = '{json.dumps(dvote)}'")
+            connection.commit()
+            await update_vote_message(vote_message, dvote)
 
 
 @bot.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    if payload.message_id != bot.role_message_id:
-        return
-
-    guild = bot.get_guild(payload.guild_id)
-    if guild is None:
-        return
-
-    try:
-        role_id = bot.emoji_to_role[payload.emoji]
-    except KeyError:
-        return
-
-    role = guild.get_role(role_id)
-    if role is None:
-        return
-
-    member = guild.get_member(payload.user_id)
-    if member is None:
-        return
-
-    await member.remove_roles(role)
+    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = '{payload.message_id}'").fetchone()
+    if rs:
+        symbol_base = 127462
+        symbol = payload.emoji.name
+        option_number = ord(symbol) - symbol_base
+        dvote = json.loads(rs[0])
+        if dvote["active"]:
+            vote_message: discord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
+            for option in dvote["options"]:
+                if option["number"] == option_number:
+                    option["count"] -= 1
+            connection.execute(f"UPDATE vote SET parameters = '{json.dumps(dvote)}'")
+            connection.commit()
+            await update_vote_message(vote_message, dvote)
 
 
 @bot.event
 async def on_message(message: discord.Message):
+    if message.guild is None:
+        return
     author = message.author
     connection.execute(f"""
         INSERT INTO presences (id, time) VALUES ('{str(author.id)}','{datetime.now().strftime('%x %X')}')
@@ -224,6 +208,60 @@ async def stats(ctx: commands.Context):
     await ctx.send(f"```\n{data}\n```")
 
 
+@bot.command()
+async def vote_start(ctx: commands.Context, message: str, *options: str):
+    """
+    Starte eine Abstimmung.
+
+    Beispiel:
+                !vote Abstimmung A B
+                !vote "Texte mit Leerzeichen müssen in Quotes" "Gilt auch für Optionen" B C
+    """
+    dvote = {
+        "author": ctx.author.id,
+        "message": message,
+        "options": [],
+        "active": True
+    }
+    embed = discord.Embed()
+    embed.title = f"Abstimmung gestartet von {ctx.author}"
+    embed.description = message
+    for i in range(0, len(options)):
+        option = options[i]
+        dvote["options"].append({
+            "number": i,
+            "option": option,
+            "count": 0
+        })
+        embed.add_field(name=f":regional_indicator_{chr(97 + i)}: 0", value=option, inline=False)
+    embed.set_footer(text=f"Abstimmung aktiv")
+    sent: discord.Message = await ctx.send(embed=embed)
+    dvote |= {"id": sent.id}
+    await ctx.message.delete()
+    await ctx.author.send(f"```Abstimmung gestartet:\n\nID: {sent.id}\nFrage: {message}```")
+    connection.execute(f"INSERT INTO vote (id, parameters) VALUES ('{str(sent.id)}', '{json.dumps(dvote)}')")
+    connection.commit()
+
+
+@bot.command()
+async def vote_end(ctx: commands.Context, id: str):
+    """
+    Beendet eine Abstimmung.
+    """
+    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = '{id}'").fetchone()
+    if rs:
+        dvote = json.loads(rs[0])
+        if dvote["active"]:
+            if dvote["author"] == ctx.author or await bot.is_owner(ctx.author):
+                vote_message: discord.Message = await ctx.fetch_message(dvote["id"])
+                dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
+                connection.execute(f"UPDATE vote SET parameters = '{json.dumps(dvote)}'")
+                connection.commit()
+                await update_vote_message(vote_message, dvote)
+                await vote_message.reply("Abstimmung beendet")
+    await ctx.message.delete()
+
+
 @bot.command(hidden=True)
 async def post(ctx: commands.Context, *message: str):
     if await bot.is_owner(ctx.author):
@@ -237,6 +275,22 @@ async def wipe_stats(ctx: commands.Context):
         connection.execute(f"DELETE FROM stats WHERE guild = '{ctx.guild.id}'")
         connection.commit()
         await ctx.message.delete()
+
+
+async def update_vote_message(message: discord.Message, dvote: dict):
+    embed = discord.Embed()
+    embed.title = f"Abstimmung gestartet von {message.guild.get_member(int(dvote['author']))}"
+    embed.description = dvote["message"]
+    for option in dvote["options"]:
+        i = option["number"]
+        txt = option["option"]
+        count = option["count"]
+        embed.add_field(name=f":regional_indicator_{chr(97 + i)}: {count}", value=txt, inline=False)
+    if dvote["active"]:
+        embed.set_footer(text="Abstimmung aktiv")
+    else:
+        embed.set_footer(text=f"Abstimmung beendet: {dvote['finished']}")
+    await message.edit(embed=embed)
 
 
 def wiki_result_to_embed(embed: discord.Embed, r: requests.Response):

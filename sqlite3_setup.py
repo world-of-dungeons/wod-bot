@@ -23,5 +23,13 @@ def init():
     """
     cursor.execute(sql)
 
+    sql = """
+        CREATE TABLE vote (
+        id TEXT PRIMARY KEY,
+        parameters TEXT
+        )
+    """
+    cursor.execute(sql)
+
     cursor.close()
     connection.close()
