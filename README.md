@@ -1,7 +1,5 @@
 # WoD Discord Bot
 
----
-
 ## Voraussetzungen
 
 - Python 3.9 oder neuer
@@ -16,4 +14,5 @@
   
 ## Betrieb
 
+- Erstelle eine `secrets.py` Datei mit einem gültigen Application-Secret (`TOKEN = "abc123"`)
 - `nohup python3.9 -u bot.py &`
