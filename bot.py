@@ -23,7 +23,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=help_comman
                    activity=discord.Game(name="World of Dungeons", type=2, url="https://world-of-dungeons.de"))
 
 re_all = re.compile(
-    "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>[0-9]+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]")
+    "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]")
 
 locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
 s = requests.Session()
@@ -136,16 +136,34 @@ async def on_message(message: discord.Message):
                                 value=f"[{post_id}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/forum/viewtopic.php?pid={post_id}&board={cat}#{post_id})",
                                 inline=False)
             elif "item" == key:
-                for world in bot.worlds:
-                    text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
+                if "@" in value:
+                    name, world = value.split("@")
+                    if world not in bot.worlds and world.lower() in bot.worlds_short:
+                        world = bot.worlds_short[world.lower()]
+                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(name)}&IS_POPUP=1&is_popup=1)\n"
+                else:
+                    for world in bot.worlds:
+                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
                 embed.add_field(name="Link zum Item", value=text, inline=False)
             elif "clan" == key:
-                for world in bot.worlds:
-                    text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(value)})\n"
+                if "@" in value:
+                    name, world = value.split("@")
+                    if world not in bot.worlds and world.lower() in bot.worlds_short:
+                        world = bot.worlds_short[world.lower()]
+                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(name)})\n"
+                else:
+                    for world in bot.worlds:
+                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zum Clan", value=text, inline=False)
             elif "group" == key:
-                for world in bot.worlds:
-                    text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(value)})\n"
+                if "@" in value:
+                    name, world = value.split("@")
+                    if world not in bot.worlds and world.lower() in bot.worlds_short:
+                        world = bot.worlds_short[world.lower()]
+                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(name)})\n"
+                else:
+                    for world in bot.worlds:
+                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zur Gruppe", value=text, inline=False)
     if len(embed.fields) > 0:
         await message.reply(embed=embed)
