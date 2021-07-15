@@ -11,7 +11,7 @@ import discord
 import requests
 from astropy.table import Table
 from bs4 import BeautifulSoup
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from secrets import TOKEN
 
@@ -20,7 +20,7 @@ intents = discord.Intents.all()
 help_command = commands.DefaultHelpCommand(no_category='Commands')
 
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=help_command,
-                   activity=discord.Game(name="World of Dungeons", type=2, url="https://world-of-dungeons.de"))
+                   activity=discord.Game(name="World of Dungeons", type=2))
 
 re_all = re.compile(
     "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]|\\[hero: ?(?P<hero>.+?)]|\\[player: ?(?P<player>.+?)]")
@@ -94,7 +94,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
             for option in dvote["options"]:
                 if option["number"] == option_number:
                     option["count"] -= 1
-            connection.execute("UPDATE vote SET parameters = ?", (json.dumps(dvote),))
+            connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), payload.message_id))
             connection.commit()
             await update_vote_message(vote_message, dvote)
 
@@ -258,7 +258,7 @@ async def vote_start(ctx: commands.Context, message: str, *options: str):
     embed.description = message
     txt: str = ""
     options_count = len(options)
-    for i in range(0, options_count):
+    for i in range(options_count):
         option = options[i]
         dvote["options"].append({
             "number": i,
@@ -302,6 +302,29 @@ async def vote_end(ctx: commands.Context, id: str):
     await ctx.message.delete()
 
 
+@bot.command()
+async def kekse(ctx: commands.Context):
+    """Serviert dem Nutzer Kekse."""
+    if ctx.author.id == 182156526612512769:
+        reset_kekse.cancel()
+        await ctx.reply("Hier sind Ihre Kekse :cookie: und ein heißer Kakao :coffee: werte Keksgöttin :bow:!")
+        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="der Keksgöttin"))
+        reset_kekse.start()
+    else:
+        await ctx.reply("Hier sind deine Kekse :cookie:!")
+
+
+@tasks.loop(minutes=5, count=1)
+async def reset_kekse():
+    pass  # Ugly hack to only run once
+
+
+@reset_kekse.after_loop
+async def reset_status():
+    print("Status changed")
+    await bot.change_presence(activity=discord.Game(name="World of Dungeons", type=2))
+
+
 @bot.command(hidden=True)
 async def post(ctx: commands.Context, *message: str):
     if await bot.is_owner(ctx.author):
@@ -314,6 +337,19 @@ async def wipe_stats(ctx: commands.Context):
     if await bot.is_owner(ctx.author):
         connection.execute("DELETE FROM stats WHERE guild = ?", (ctx.guild.id,))
         connection.commit()
+        await ctx.message.delete()
+
+
+@bot.command(hidden=True)
+async def wipe_vote(ctx: commands.Context):
+    if await bot.is_owner(ctx.author):
+        rs = connection.execute("SELECT parameters FROM vote").fetchall()
+        if rs:
+            for result in rs:
+                dvote = json.loads(result[0])
+                if not dvote["active"]:
+                    connection.execute("DELETE FROM vote WHERE id = ?", (dvote["id"],))
+                    connection.commit()
         await ctx.message.delete()
 
 
