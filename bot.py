@@ -23,7 +23,7 @@ bot = commands.Bot(command_prefix='!', intents=intents, help_command=help_comman
                    activity=discord.Game(name="World of Dungeons", type=2, url="https://world-of-dungeons.de"))
 
 re_all = re.compile(
-    "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]")
+    "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]|\\[hero: ?(?P<hero>.+?)]|\\[player: ?(?P<player>.+?)]")
 
 locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
 s = requests.Session()
@@ -51,24 +51,21 @@ async def on_ready():
 
 
 @bot.event
-async def on_member_update(before: discord.Member, after: discord.Member):
+async def on_member_update(_, after: discord.Member):
     if after.raw_status in ("online", "dnd", "idle"):
-        connection.execute(f"""
-            INSERT INTO presences (id, time) VALUES ('{str(after.id)}','{datetime.now().strftime('%x %X')}')
-            ON CONFLICT(id) DO UPDATE SET time = '{datetime.now().strftime('%x %X')}'
-            """)
+        connection.execute("INSERT INTO presences (id, time) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET time = ?",
+                           (after.id, datetime.now().strftime('%x %X'), datetime.now().strftime('%x %X')))
         connection.commit()
 
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    connection.execute(f"""
-        INSERT INTO stats (guild, id, reactions) VALUES ('{str(payload.guild_id)}','{str(payload.member.id)}',1)
-        ON CONFLICT(guild, id) DO UPDATE SET reactions = reactions+1
-        """)
+    connection.execute(
+        "INSERT INTO stats (guild, id, reactions) VALUES (?,?,1) ON CONFLICT(guild, id) DO UPDATE SET reactions = reactions+1",
+        (payload.guild_id, payload.member.id))
     connection.commit()
 
-    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = '{payload.message_id}'").fetchone()
+    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = ?", (payload.message_id,)).fetchone()
     if rs:
         symbol_base = 127462
         symbol = payload.emoji.name
@@ -79,14 +76,14 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             for option in dvote["options"]:
                 if option["number"] == option_number:
                     option["count"] += 1
-            connection.execute(f"UPDATE vote SET parameters = '{json.dumps(dvote)}'")
+            connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), payload.message_id))
             connection.commit()
             await update_vote_message(vote_message, dvote)
 
 
 @bot.event
 async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
-    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = '{payload.message_id}'").fetchone()
+    rs = connection.execute("SELECT parameters FROM vote WHERE id = ?", (payload.message_id,)).fetchone()
     if rs:
         symbol_base = 127462
         symbol = payload.emoji.name
@@ -97,7 +94,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
             for option in dvote["options"]:
                 if option["number"] == option_number:
                     option["count"] -= 1
-            connection.execute(f"UPDATE vote SET parameters = '{json.dumps(dvote)}'")
+            connection.execute("UPDATE vote SET parameters = ?", (json.dumps(dvote),))
             connection.commit()
             await update_vote_message(vote_message, dvote)
 
@@ -107,14 +104,11 @@ async def on_message(message: discord.Message):
     if message.guild is None:
         return
     author = message.author
-    connection.execute(f"""
-        INSERT INTO presences (id, time) VALUES ('{str(author.id)}','{datetime.now().strftime('%x %X')}')
-        ON CONFLICT(id) DO UPDATE SET time = '{datetime.now().strftime('%x %X')}'
-        """)
-    connection.execute(f"""
-        INSERT INTO stats (guild, id, messages) VALUES ('{str(message.guild.id)}','{str(author.id)}',1)
-        ON CONFLICT(guild, id) DO UPDATE SET messages = messages+1
-        """)
+    connection.execute("INSERT INTO presences (id, time) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET time = ?",
+                       (author.id, datetime.now().strftime('%x %X'), datetime.now().strftime('%x %X')))
+    connection.execute(
+        "INSERT INTO stats (guild, id, messages) VALUES (?,?,1) ON CONFLICT(guild, id) DO UPDATE SET messages = messages+1",
+        (message.guild.id, author.id))
     connection.commit()
     embed = discord.Embed()
     processed = []
@@ -165,6 +159,26 @@ async def on_message(message: discord.Message):
                     for world in bot.worlds:
                         text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zur Gruppe", value=text, inline=False)
+            elif "hero" == key:
+                if "@" in value:
+                    name, world = value.split("@")
+                    if world not in bot.worlds and world.lower() in bot.worlds_short:
+                        world = bot.worlds_short[world.lower()]
+                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(name)})\n"
+                else:
+                    for world in bot.worlds:
+                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(value)})\n"
+                embed.add_field(name="Link zum Held", value=text, inline=False)
+            elif "player" == key:
+                if "@" in value:
+                    name, world = value.split("@")
+                    if world not in bot.worlds and world.lower() in bot.worlds_short:
+                        world = bot.worlds_short[world.lower()]
+                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(name)})\n"
+                else:
+                    for world in bot.worlds:
+                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(value)})\n"
+                embed.add_field(name="Link zum Held", value=text, inline=False)
     if len(embed.fields) > 0:
         await message.reply(embed=embed)
     await bot.process_commands(message)
@@ -206,17 +220,15 @@ async def seen(ctx: commands.Context, member: discord.Member):
     if current_status in ("online", "dnd", "idle"):
         await ctx.send(f'{member.name} ist gerade online!')
     else:
-        last_seen = connection.execute(f"SELECT time FROM presences WHERE id = '{str(member.id)}'").fetchone()[0]
+        last_seen = connection.execute(f"SELECT time FROM presences WHERE id = ?", (member.id,)).fetchone()[0]
         await ctx.send(f'{member.name} wurde zuletzt am {last_seen} gesehen!')
 
 
 @bot.command()
 async def stats(ctx: commands.Context):
-    """Nutzungsstatistiken. 30 Sekunden Abklingzeit."""
+    """Globale Nutzungsstatistiken."""
     data = Table(names=("Nutzer", "Nachrichten", "Reactions"), dtype=('str', 'int32', 'int32'))
-    rs = connection.execute(f"""
-        SELECT id,messages,reactions FROM stats WHERE guild = '{str(ctx.guild.id)}'
-        """).fetchall()
+    rs = connection.execute("SELECT id,messages,reactions FROM stats WHERE guild = ?", (ctx.guild.id,)).fetchall()
     for key, messages, reactions in rs:
         member = ctx.guild.get_member(int(key))
         if member:
@@ -244,7 +256,9 @@ async def vote_start(ctx: commands.Context, message: str, *options: str):
     embed = discord.Embed()
     embed.title = f"Abstimmung gestartet von {ctx.author}"
     embed.description = message
-    for i in range(0, len(options)):
+    txt: str = ""
+    options_count = len(options)
+    for i in range(0, options_count):
         option = options[i]
         dvote["options"].append({
             "number": i,
@@ -252,12 +266,20 @@ async def vote_start(ctx: commands.Context, message: str, *options: str):
             "count": 0
         })
         embed.add_field(name=f":regional_indicator_{chr(97 + i)}: 0", value=option, inline=False)
+        txt += f":regional_indicator_{chr(97 + i)}:"
+        if i + 2 > options_count:
+            pass
+        elif i + 3 > options_count:
+            txt += " oder "
+        else:
+            txt += ", "
+    embed.add_field(name="Nutze Reactions zum Abstimmen:", value=txt, inline=False)
     embed.set_footer(text=f"Abstimmung aktiv")
     sent: discord.Message = await ctx.send(embed=embed)
     dvote |= {"id": sent.id}
     await ctx.message.delete()
     await ctx.author.send(f"```Abstimmung gestartet:\n\nID: {sent.id}\nFrage: {message}```")
-    connection.execute(f"INSERT INTO vote (id, parameters) VALUES ('{str(sent.id)}', '{json.dumps(dvote)}')")
+    connection.execute("INSERT INTO vote (id, parameters) VALUES (?, ?)", (sent.id, json.dumps(dvote)))
     connection.commit()
 
 
@@ -266,14 +288,14 @@ async def vote_end(ctx: commands.Context, id: str):
     """
     Beendet eine Abstimmung.
     """
-    rs = connection.execute(f"SELECT parameters FROM vote WHERE id = '{id}'").fetchone()
+    rs = connection.execute("SELECT parameters FROM vote WHERE id = ?", (id,)).fetchone()
     if rs:
         dvote = json.loads(rs[0])
         if dvote["active"]:
             if dvote["author"] == ctx.author or await bot.is_owner(ctx.author):
                 vote_message: discord.Message = await ctx.fetch_message(dvote["id"])
                 dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
-                connection.execute(f"UPDATE vote SET parameters = '{json.dumps(dvote)}'")
+                connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), dvote["id"]))
                 connection.commit()
                 await update_vote_message(vote_message, dvote)
                 await vote_message.reply("Abstimmung beendet")
@@ -290,7 +312,7 @@ async def post(ctx: commands.Context, *message: str):
 @bot.command(hidden=True)
 async def wipe_stats(ctx: commands.Context):
     if await bot.is_owner(ctx.author):
-        connection.execute(f"DELETE FROM stats WHERE guild = '{ctx.guild.id}'")
+        connection.execute("DELETE FROM stats WHERE guild = ?", (ctx.guild.id,))
         connection.commit()
         await ctx.message.delete()
 
@@ -299,11 +321,21 @@ async def update_vote_message(message: discord.Message, dvote: dict):
     embed = discord.Embed()
     embed.title = f"Abstimmung gestartet von {message.guild.get_member(int(dvote['author']))}"
     embed.description = dvote["message"]
+    txt: str = ""
+    options_count = len(dvote["options"])
     for option in dvote["options"]:
         i = option["number"]
-        txt = option["option"]
+        option_value = option["option"]
         count = option["count"]
-        embed.add_field(name=f":regional_indicator_{chr(97 + i)}: {count}", value=txt, inline=False)
+        embed.add_field(name=f":regional_indicator_{chr(97 + i)}: {count}", value=option_value, inline=False)
+        txt += f":regional_indicator_{chr(97 + i)}:"
+        if i + 2 > options_count:
+            pass
+        elif i + 3 > options_count:
+            txt += " oder "
+        else:
+            txt += ", "
+    embed.add_field(name="Nutze Reactions zum Abstimmen:", value=txt, inline=False)
     if dvote["active"]:
         embed.set_footer(text="Abstimmung aktiv")
     else:
