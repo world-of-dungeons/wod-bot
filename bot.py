@@ -7,20 +7,21 @@ import sqlite3
 import urllib.parse
 from datetime import datetime
 
-import discord
+import nextcord
 import requests
 from astropy.table import Table
 from bs4 import BeautifulSoup
-from discord.ext import commands, tasks
+from nextcord import Interaction
+from nextcord.ext import commands, tasks
 
 from secrets import TOKEN
 
-intents = discord.Intents.all()
+intents = nextcord.Intents.all()
 
 help_command = commands.DefaultHelpCommand(no_category='Commands')
 
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=help_command,
-                   activity=discord.Game(name="World of Dungeons", type=2))
+                   activity=nextcord.Game(name="World of Dungeons", type=2))
 
 re_all = re.compile(
     "\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]|\\[hero: ?(?P<hero>.+?)]|\\[player: ?(?P<player>.+?)]")
@@ -51,7 +52,7 @@ async def on_ready():
 
 
 @bot.event
-async def on_member_update(_, after: discord.Member):
+async def on_member_update(_, after: nextcord.Member):
     if after.raw_status in ("online", "dnd", "idle"):
         connection.execute("INSERT INTO presences (id, time) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET time = ?",
                            (after.id, datetime.now().strftime('%x %X'), datetime.now().strftime('%x %X')))
@@ -59,7 +60,7 @@ async def on_member_update(_, after: discord.Member):
 
 
 @bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
     connection.execute(
         "INSERT INTO stats (guild, id, reactions) VALUES (?,?,1) ON CONFLICT(guild, id) DO UPDATE SET reactions = reactions+1",
         (payload.guild_id, payload.member.id))
@@ -72,7 +73,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         option_number = ord(symbol) - symbol_base
         dvote = json.loads(rs[0])
         if dvote["active"]:
-            vote_message: discord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
+            vote_message: nextcord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
             for option in dvote["options"]:
                 if option["number"] == option_number:
                     option["count"] += 1
@@ -82,7 +83,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
 
 @bot.event
-async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+async def on_raw_reaction_remove(payload: nextcord.RawReactionActionEvent):
     rs = connection.execute("SELECT parameters FROM vote WHERE id = ?", (payload.message_id,)).fetchone()
     if rs:
         symbol_base = 127462
@@ -90,7 +91,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
         option_number = ord(symbol) - symbol_base
         dvote = json.loads(rs[0])
         if dvote["active"]:
-            vote_message: discord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
+            vote_message: nextcord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
             for option in dvote["options"]:
                 if option["number"] == option_number:
                     option["count"] -= 1
@@ -100,7 +101,7 @@ async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
 
 
 @bot.event
-async def on_message(message: discord.Message):
+async def on_message(message: nextcord.Message):
     if message.guild is None:
         return
     author = message.author
@@ -110,7 +111,7 @@ async def on_message(message: discord.Message):
         "INSERT INTO stats (guild, id, messages) VALUES (?,?,1) ON CONFLICT(guild, id) DO UPDATE SET messages = messages+1",
         (message.guild.id, author.id))
     connection.commit()
-    embed = discord.Embed()
+    embed = nextcord.Embed()
     processed = []
     for matches in re_all.finditer(message.content):
         matches = matches.groupdict()
@@ -184,8 +185,8 @@ async def on_message(message: discord.Message):
     await bot.process_commands(message)
 
 
-@bot.command()
-async def wiki(ctx: commands.Context, *suche: str):
+@bot.slash_command(description="Sucht nach einem Begriff in der Enzyklopädie. Zeigt nur die Top 10 Ergebnisse!")
+async def wiki(interaction: Interaction, suche: str):
     """Sucht nach einem Begriff in der Enzyklopädie. Zeigt nur die Top 10 Ergebnisse!"""
     params = {
         'action': 'query',
@@ -197,49 +198,50 @@ async def wiki(ctx: commands.Context, *suche: str):
     }
     r = s.get("http://wiki.world-of-dungeons.de/wiki/api.php", params=params)
     print(r.url)
-    embed = discord.Embed()
+    embed = nextcord.Embed()
     embed.title = "Hier ist dein Suchergebnis:"
     wiki_result_to_embed(embed, r)
     params.update({'srwhat': 'text'})
     r = s.get("http://wiki.world-of-dungeons.de/wiki/api.php", params=params)
     print(r.url)
     wiki_result_to_embed(embed, r)
-    await ctx.send(embed=embed)
+    await interaction.send(embed=embed)
 
 
-@bot.command()
-async def joined(ctx: commands.Context, member: discord.Member):
+@bot.slash_command(description="Seit wann ist ein Nutzer Mitglied des Servers?")
+async def joined(interaction: Interaction, member: nextcord.Member):
     """Seit wann ist ein Nutzer Mitglied des Servers?"""
-    await ctx.send(f'{member.name} joined in {member.joined_at}')
+    await interaction.send(f'{member.name} joined in {member.joined_at}')
 
 
-@bot.command()
-async def seen(ctx: commands.Context, member: discord.Member):
+@bot.slash_command(description="Wann war der Nutzer zuletzt aktiv?")
+async def seen(interaction: Interaction, member: nextcord.Member):
     """Wann war der Nutzer zuletzt aktiv?"""
     current_status = member.raw_status
     if current_status in ("online", "dnd", "idle"):
-        await ctx.send(f'{member.name} ist gerade online!')
+        await interaction.send(f'{member.name} ist gerade online!')
     else:
         last_seen = connection.execute(f"SELECT time FROM presences WHERE id = ?", (member.id,)).fetchone()[0]
-        await ctx.send(f'{member.name} wurde zuletzt am {last_seen} gesehen!')
+        await interaction.send(f'{member.name} wurde zuletzt am {last_seen} gesehen!')
 
 
-@bot.command()
-async def stats(ctx: commands.Context):
+@bot.slash_command(description="Globale Nutzungsstatistiken.")
+async def stats(interaction: Interaction):
     """Globale Nutzungsstatistiken."""
     data = Table(names=("Nutzer", "Nachrichten", "Reactions"), dtype=('str', 'int32', 'int32'))
     rs = connection.execute("SELECT id,messages,reactions FROM stats WHERE guild = ?", (ctx.guild.id,)).fetchall()
     for key, messages, reactions in rs:
-        member = ctx.guild.get_member(int(key))
+        member = interaction.guild.get_member(int(key))
         if member:
             messages = messages if messages is not None else 0
             reactions = reactions if reactions is not None else 0
             data.add_row((member.name, messages, reactions))
-    await ctx.send(f"```\n{data}\n```")
+    await interaction.send(f"```\n{data}\n```")
 
 
-@bot.command()
-async def vote_start(ctx: commands.Context, message: str, *options: str):
+# FIXME: Does not work like this anymore, refactor with clean Buttons/Dropdown
+@bot.slash_command(description="Starte eine Abstimmung.")
+async def vote_start(interaction: Interaction, message: str, options: str):
     """
     Starte eine Abstimmung.
 
@@ -248,13 +250,13 @@ async def vote_start(ctx: commands.Context, message: str, *options: str):
                 !vote "Texte mit Leerzeichen müssen in Quotes" "Gilt auch für Optionen" B C
     """
     dvote = {
-        "author": ctx.author.id,
+        "author": interaction.user.id,
         "message": message,
         "options": [],
         "active": True
     }
-    embed = discord.Embed()
-    embed.title = f"Abstimmung gestartet von {ctx.author}"
+    embed = nextcord.Embed()
+    embed.title = f"Abstimmung gestartet von {interaction.user}"
     embed.description = message
     txt: str = ""
     options_count = len(options)
@@ -275,16 +277,17 @@ async def vote_start(ctx: commands.Context, message: str, *options: str):
             txt += ", "
     embed.add_field(name="Nutze Reactions zum Abstimmen:", value=txt, inline=False)
     embed.set_footer(text=f"Abstimmung aktiv")
-    sent: discord.Message = await ctx.send(embed=embed)
+    sent: nextcord.Message = await interaction.send(embed=embed)
     dvote |= {"id": sent.id}
-    await ctx.message.delete()
-    await ctx.author.send(f"```Abstimmung gestartet:\n\nID: {sent.id}\nFrage: {message}```")
+    await interaction.delete_original_message()
+    await interaction.user.send(f"```Abstimmung gestartet:\n\nID: {sent.id}\nFrage: {message}```")
     connection.execute("INSERT INTO vote (id, parameters) VALUES (?, ?)", (sent.id, json.dumps(dvote)))
     connection.commit()
 
 
-@bot.command()
-async def vote_end(ctx: commands.Context, id: str):
+# FIXME: See vote_start
+@bot.slash_command(description="Beendet eine Abstimmung.")
+async def vote_end(interaction: Interaction, id: str):
     """
     Beendet eine Abstimmung.
     """
@@ -292,26 +295,26 @@ async def vote_end(ctx: commands.Context, id: str):
     if rs:
         dvote = json.loads(rs[0])
         if dvote["active"]:
-            if dvote["author"] == ctx.author or await bot.is_owner(ctx.author):
-                vote_message: discord.Message = await ctx.fetch_message(dvote["id"])
+            if dvote["author"] == interaction.user or await bot.is_owner(interaction.user):
+                vote_message: nextcord.Message = await interaction.channel.fetch_message(dvote["id"])
                 dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
                 connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), dvote["id"]))
                 connection.commit()
                 await update_vote_message(vote_message, dvote)
                 await vote_message.reply("Abstimmung beendet")
-    await ctx.message.delete()
+    await interaction.message.delete()
 
 
-@bot.command()
-async def kekse(ctx: commands.Context):
+@bot.slash_command(description="Serviert dem Nutzer Kekse.")
+async def kekse(interaction: Interaction):
     """Serviert dem Nutzer Kekse."""
-    if ctx.author.id == 182156526612512769:
+    if interaction.user.id == 182156526612512769:
         reset_kekse.cancel()
-        await ctx.reply("Hier sind Ihre Kekse :cookie: und ein heißer Kakao :coffee: werte Keksgöttin :bow:!")
-        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name="der Keksgöttin"))
+        await interaction.send("Hier sind Ihre Kekse :cookie: und ein heißer Kakao :coffee: werte Keksgöttin :bow:!")
+        await bot.change_presence(activity=nextcord.Activity(type=nextcord.ActivityType.listening, name="der Keksgöttin"))
         reset_kekse.start()
     else:
-        await ctx.reply("Hier sind deine Kekse :cookie:!")
+        await interaction.send("Hier sind deine Kekse :cookie:!")
 
 
 @tasks.loop(minutes=5, count=1)
@@ -322,27 +325,29 @@ async def reset_kekse():
 @reset_kekse.after_loop
 async def reset_status():
     print("Status changed")
-    await bot.change_presence(activity=discord.Game(name="World of Dungeons", type=2))
+    await bot.change_presence(activity=nextcord.Game(name="World of Dungeons", type=2))
 
 
-@bot.command(hidden=True)
-async def post(ctx: commands.Context, *message: str):
-    if await bot.is_owner(ctx.author):
-        await ctx.send(' '.join(message))
-        await ctx.message.delete()
+# FIXME: Hide from normal users?
+@bot.slash_command(default_permission=False)
+async def post(interaction: Interaction, message: str):
+    if await bot.is_owner(interaction.user):
+        await interaction.send(message)
 
 
-@bot.command(hidden=True)
-async def wipe_stats(ctx: commands.Context):
-    if await bot.is_owner(ctx.author):
-        connection.execute("DELETE FROM stats WHERE guild = ?", (ctx.guild.id,))
+# FIXME: Hide from normal users?
+@bot.slash_command(default_permission=False)
+async def wipe_stats(interaction: Interaction):
+    if await bot.is_owner(interaction.user):
+        connection.execute("DELETE FROM stats WHERE guild = ?", (interaction.guild.id,))
         connection.commit()
-        await ctx.message.delete()
+        await interaction.delete_original_message()
 
 
-@bot.command(hidden=True)
-async def wipe_vote(ctx: commands.Context):
-    if await bot.is_owner(ctx.author):
+# FIXME: Hide from normal users?
+@bot.slash_command(default_permission=False)
+async def wipe_vote(interaction: Interaction):
+    if await bot.is_owner(interaction.user):
         rs = connection.execute("SELECT parameters FROM vote").fetchall()
         if rs:
             for result in rs:
@@ -350,11 +355,11 @@ async def wipe_vote(ctx: commands.Context):
                 if not dvote["active"]:
                     connection.execute("DELETE FROM vote WHERE id = ?", (dvote["id"],))
                     connection.commit()
-        await ctx.message.delete()
+        await interaction.delete_original_message()
 
 
-async def update_vote_message(message: discord.Message, dvote: dict):
-    embed = discord.Embed()
+async def update_vote_message(message: nextcord.Message, dvote: dict):
+    embed = nextcord.Embed()
     embed.title = f"Abstimmung gestartet von {message.guild.get_member(int(dvote['author']))}"
     embed.description = dvote["message"]
     txt: str = ""
@@ -379,7 +384,7 @@ async def update_vote_message(message: discord.Message, dvote: dict):
     await message.edit(embed=embed)
 
 
-def wiki_result_to_embed(embed: discord.Embed, r: requests.Response):
+def wiki_result_to_embed(embed: nextcord.Embed, r: requests.Response):
     for result in json.loads(r.text)['query']['search']:
         text = f"""
            {html.unescape(BeautifulSoup(result['snippet'], 'html.parser').get_text())}
