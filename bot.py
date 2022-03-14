@@ -47,6 +47,7 @@ bot.worlds_short = {
 
 @bot.event
 async def on_ready():
+    cleanup_vote()
     print(f'Logged in as {bot.user} (ID: {bot.user.id})')
     print('------')
 
@@ -235,7 +236,7 @@ async def stats(ia: Interaction):
 
 
 # FIXME: Only allow single vote per member
-@bot.slash_command(description="Starte eine Abstimmung.")
+@bot.slash_command(description="Starte eine Abstimmung. Optionen müssen mit + getrennt werden.")
 async def vote_start(ia: Interaction, message: str, options: str):
     """
     Starte eine Abstimmung. Optionen müssen mit + getrennt werden.
@@ -246,12 +247,13 @@ async def vote_start(ia: Interaction, message: str, options: str):
         "message": message,
         "options": [],
         "active": True,
+        "voted": [],
     }
     embed = nextcord.Embed()
     embed.title = f"Abstimmung gestartet von {ia.user}"
     embed.description = message
     options = options.split("+")
-    view: View = View()
+    view: View = View(timeout=0)
     for option in options:
         dvote["options"].append({
             "option": option,
@@ -259,7 +261,7 @@ async def vote_start(ia: Interaction, message: str, options: str):
         })
         embed.add_field(name=option, value=0, inline=False)
         view.add_item(PollButton(label=option, uuid=uuid))
-    embed.set_footer(text=f"Abstimmung aktiv")
+    embed.set_footer(text=f"Abstimmung aktiv - Abgegebene Stimmen sind endgültig.")
     await ia.send(embed=embed, view=view)
     sent = await ia.original_message()
     dvote |= {"id": sent.id}
@@ -280,7 +282,7 @@ async def vote_end(ia: Interaction, id: str):
             if dvote["author"] == ia.user or await bot.is_owner(ia.user):
                 vote_message: nextcord.Message = await ia.channel.fetch_message(dvote["id"])
                 dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
-                connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), dvote["id"]))
+                connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), id))
                 connection.commit()
                 await update_vote_message(vote_message, dvote)
                 await vote_message.reply("Abstimmung beendet")
@@ -333,15 +335,29 @@ async def wipe_stats(ia: Interaction):
 @bot.slash_command(default_permission=False)
 async def wipe_vote(ia: Interaction):
     if await bot.is_owner(ia.user):
-        rs = connection.execute("SELECT parameters FROM vote").fetchall()
+        rs = connection.execute("SELECT id, parameters FROM vote").fetchall()
         if rs:
             for result in rs:
-                dvote = json.loads(result[0])
+                uuid = result[0]
+                dvote = json.loads(result[1])
+                print(dvote)
                 if not dvote["active"]:
-                    connection.execute("DELETE FROM vote WHERE id = ?", (dvote["id"],))
+                    connection.execute("DELETE FROM vote WHERE id = ?", (uuid,))
                     connection.commit()
     await ia.send("Done")
     await ia.delete_original_message()
+
+
+def cleanup_vote():
+    rs = connection.execute("SELECT id, parameters FROM vote").fetchall()
+    if rs:
+        for result in rs:
+            dvote = json.loads(result[1])
+            uuid = result[0]
+            if dvote["active"]:
+                dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
+                connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), uuid))
+                connection.commit()
 
 
 async def update_vote_message(msg: nextcord.Message, dvote: dict):
@@ -353,7 +369,7 @@ async def update_vote_message(msg: nextcord.Message, dvote: dict):
         count = option["count"]
         embed.add_field(name=option_value, value=count, inline=False)
     if dvote["active"]:
-        embed.set_footer(text="Abstimmung aktiv")
+        embed.set_footer(text="Abstimmung aktiv - Abgegebene Stimmen sind endgültig.")
         await msg.edit(embed=embed)
     else:
         embed.set_footer(text=f"Abstimmung beendet: {dvote['finished']}")
