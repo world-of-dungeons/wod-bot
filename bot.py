@@ -47,7 +47,7 @@ bot.worlds_short = {
 
 @bot.event
 async def on_ready():
-    cleanup_vote()
+    await cleanup_vote()
     print(f'Logged in as {bot.user} (ID: {bot.user.id})')
     print('------')
 
@@ -66,24 +66,6 @@ async def on_raw_reaction_add(payload: nextcord.RawReactionActionEvent):
         "INSERT INTO stats (guild, id, reactions) VALUES (?,?,1) ON CONFLICT(guild, id) DO UPDATE SET reactions = reactions+1",
         (payload.guild_id, payload.member.id))
     connection.commit()
-
-
-@bot.event
-async def on_raw_reaction_remove(payload: nextcord.RawReactionActionEvent):
-    rs = connection.execute("SELECT parameters FROM vote WHERE id = ?", (payload.message_id,)).fetchone()
-    if rs:
-        symbol_base = 127462
-        symbol = payload.emoji.name
-        option_number = ord(symbol) - symbol_base
-        dvote = json.loads(rs[0])
-        if dvote["active"]:
-            vote_message: nextcord.Message = await bot.get_channel(payload.channel_id).fetch_message(dvote["id"])
-            for option in dvote["options"]:
-                if option["number"] == option_number:
-                    option["count"] -= 1
-            connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), payload.message_id))
-            connection.commit()
-            await update_vote_message(vote_message, dvote)
 
 
 @bot.event
@@ -181,7 +163,7 @@ async def on_message(msg: nextcord.Message):
     await bot.process_commands(msg)
 
 
-@bot.slash_command(description="Sucht nach einem Begriff in der Enzyklopädie. Zeigt nur die Top 10 Ergebnisse!")
+@bot.slash_command()
 async def wiki(ia: Interaction, suche: str):
     """Sucht nach einem Begriff in der Enzyklopädie. Zeigt nur die Top 10 Ergebnisse!"""
     params = {
@@ -204,13 +186,13 @@ async def wiki(ia: Interaction, suche: str):
     await ia.send(embed=embed)
 
 
-@bot.slash_command(description="Seit wann ist ein Nutzer Mitglied des Servers?")
+@bot.slash_command()
 async def joined(ia: Interaction, member: nextcord.Member):
     """Seit wann ist ein Nutzer Mitglied des Servers?"""
     await ia.send(f'{member.name} joined in {member.joined_at}')
 
 
-@bot.slash_command(description="Wann war der Nutzer zuletzt aktiv?")
+@bot.slash_command()
 async def seen(ia: Interaction, member: nextcord.Member):
     """Wann war der Nutzer zuletzt aktiv?"""
     current_status = member.raw_status
@@ -221,7 +203,7 @@ async def seen(ia: Interaction, member: nextcord.Member):
         await ia.send(f'{member.name} wurde zuletzt am {last_seen} gesehen!')
 
 
-@bot.slash_command(description="Globale Nutzungsstatistiken.")
+@bot.slash_command()
 async def stats(ia: Interaction):
     """Globale Nutzungsstatistiken."""
     data = Table(names=("Nutzer", "Nachrichten", "Reactions"), dtype=('str', 'int32', 'int32'))
@@ -235,24 +217,24 @@ async def stats(ia: Interaction):
     await ia.send(f"```\n{data}\n```")
 
 
-# FIXME: Only allow single vote per member
-@bot.slash_command(description="Starte eine Abstimmung. Optionen müssen mit + getrennt werden.")
-async def vote_start(ia: Interaction, message: str, options: str):
+@bot.slash_command()
+async def vote_start(ia: Interaction, frage: str, optionen: str):
     """
-    Starte eine Abstimmung. Optionen müssen mit + getrennt werden.
+    Starte eine Abstimmung. Optionen müssen mit `+` getrennt werden.
     """
     uuid = str(uuid4())
     dvote = {
         "author": ia.user.id,
-        "message": message,
+        "message": frage,
         "options": [],
         "active": True,
         "voted": [],
+        "channel": ia.channel.id
     }
     embed = nextcord.Embed()
     embed.title = f"Abstimmung gestartet von {ia.user}"
-    embed.description = message
-    options = options.split("+")
+    embed.description = frage
+    options = optionen.split("+")
     view: View = View(timeout=0)
     for option in options:
         dvote["options"].append({
@@ -265,12 +247,12 @@ async def vote_start(ia: Interaction, message: str, options: str):
     await ia.send(embed=embed, view=view)
     sent = await ia.original_message()
     dvote |= {"id": sent.id}
-    await ia.user.send(f"```Abstimmung gestartet:\n\nID: {uuid}\nFrage: {message}```")
+    await ia.user.send(f"```Abstimmung gestartet:\n\nID: {uuid}\nFrage: {frage}```")
     connection.execute("INSERT INTO vote (id, parameters) VALUES (?, ?)", (uuid, json.dumps(dvote)))
     connection.commit()
 
 
-@bot.slash_command(description="Beendet eine Abstimmung.")
+@bot.slash_command()
 async def vote_end(ia: Interaction, id: str):
     """
     Beendet eine Abstimmung.
@@ -290,7 +272,7 @@ async def vote_end(ia: Interaction, id: str):
                 await ia.delete_original_message()
 
 
-@bot.slash_command(description="Serviert dem Nutzer Kekse.")
+@bot.slash_command()
 async def kekse(ia: Interaction):
     """Serviert dem Nutzer Kekse."""
     if ia.user.id == 182156526612512769:
@@ -309,21 +291,15 @@ async def reset_kekse():
 
 @reset_kekse.after_loop
 async def reset_status():
-    print("Status changed")
     await bot.change_presence(activity=nextcord.Game(name="World of Dungeons", type=2))
 
 
 # FIXME: Hide from normal users?
 @bot.slash_command(default_permission=False)
-async def post(ia: Interaction, message: str):
-    if await bot.is_owner(ia.user):
-        await ia.send(message)
-    await ia.delete_original_message()
-
-
-# FIXME: Hide from normal users?
-@bot.slash_command(default_permission=False)
 async def wipe_stats(ia: Interaction):
+    """
+    [ADMIN COMMAND] Löscht Statistiken des Servers aus der Datenbank.
+    """
     if await bot.is_owner(ia.user):
         connection.execute("DELETE FROM stats WHERE guild = ?", (ia.guild.id,))
         connection.commit()
@@ -334,13 +310,15 @@ async def wipe_stats(ia: Interaction):
 # FIXME: Hide from normal users?
 @bot.slash_command(default_permission=False)
 async def wipe_vote(ia: Interaction):
+    """
+    [ADMIN COMMAND] Löscht beendete Abstimmungen aus der Datenbank.
+    """
     if await bot.is_owner(ia.user):
         rs = connection.execute("SELECT id, parameters FROM vote").fetchall()
         if rs:
             for result in rs:
                 uuid = result[0]
                 dvote = json.loads(result[1])
-                print(dvote)
                 if not dvote["active"]:
                     connection.execute("DELETE FROM vote WHERE id = ?", (uuid,))
                     connection.commit()
@@ -348,16 +326,25 @@ async def wipe_vote(ia: Interaction):
     await ia.delete_original_message()
 
 
-def cleanup_vote():
+async def cleanup_vote():
     rs = connection.execute("SELECT id, parameters FROM vote").fetchall()
     if rs:
         for result in rs:
             dvote = json.loads(result[1])
             uuid = result[0]
             if dvote["active"]:
-                dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
-                connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), uuid))
-                connection.commit()
+                try:
+                    dvote |= {"active": False, "finished": datetime.now().strftime('%x %X')}
+                    connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), uuid))
+                    connection.commit()
+                    msg = bot.get_channel(dvote["channel"]).get_partial_message(dvote["id"])
+                    embed = nextcord.Embed()
+                    embed.title = f"Abstimmung gestartet von {msg.guild.get_member(int(dvote['author']))}"
+                    embed.description = dvote["message"]
+                    embed.set_footer(text=f"Abstimmung beendet: {dvote['finished']}")
+                    await msg.edit(embed=embed, view=None)
+                except Exception:
+                    pass
 
 
 async def update_vote_message(msg: nextcord.Message, dvote: dict):
@@ -394,11 +381,12 @@ class PollButton(nextcord.ui.Button):
         rs = connection.execute(f"SELECT parameters FROM vote WHERE id = ?", (self.uuid,)).fetchone()
         if rs:
             dvote = json.loads(rs[0])
-            if dvote["active"]:
+            if dvote["active"] and ia.user.id not in dvote["voted"]:
                 vote_message: nextcord.Message = await bot.get_channel(ia.channel_id).fetch_message(dvote["id"])
                 for option in dvote["options"]:
                     if option["option"] == self.label:
                         option["count"] += 1
+                dvote["voted"].append(ia.user.id)
                 connection.execute("UPDATE vote SET parameters = ? WHERE id = ?",
                                    (json.dumps(dvote), self.uuid))
                 connection.commit()
