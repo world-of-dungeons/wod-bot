@@ -1,9 +1,5 @@
 # WoD Discord Bot
 
-## Zukunft
-
-Die Zukunft dieses Bots steht aktuell in den Sternen. Die Weiterentwicklung von `discord.py` wurde eingestellt und ob und wann ich die Zeit habe den Code an die neuen Vorraussetzungen von Discord anzupassen ist unklar. Die aktuelle Version sollte bis April 2022 funktionieren.
-
 ## Voraussetzungen
 
 - Python 3.9 oder neuer
