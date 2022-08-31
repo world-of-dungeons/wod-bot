@@ -297,35 +297,53 @@ async def reset_status():
 
 
 # FIXME: Hide from normal users?
-@bot.slash_command(default_permission=False)
+@bot.slash_command()
+@commands.check_any(commands.is_owner(), commands.has_permissions(administrator=True))
 async def wipe_stats(ia: Interaction):
     """
     [ADMIN COMMAND] Löscht Statistiken des Servers aus der Datenbank.
     """
-    if await bot.is_owner(ia.user):
-        connection.execute("DELETE FROM stats WHERE guild = ?", (ia.guild.id,))
-        connection.commit()
+    connection.execute("DELETE FROM stats WHERE guild = ?", (ia.guild.id,))
+    connection.commit()
     await ia.send("Done")
     await ia.delete_original_message()
 
 
 # FIXME: Hide from normal users?
-@bot.slash_command(default_permission=False)
+@bot.slash_command()
+@commands.check_any(commands.is_owner(), commands.has_permissions(administrator=True))
 async def wipe_vote(ia: Interaction):
     """
     [ADMIN COMMAND] Löscht beendete Abstimmungen aus der Datenbank.
     """
-    if await bot.is_owner(ia.user):
-        rs = connection.execute("SELECT id, parameters FROM vote").fetchall()
-        if rs:
-            for result in rs:
-                uuid = result[0]
-                dvote = json.loads(result[1])
-                if not dvote["active"]:
-                    connection.execute("DELETE FROM vote WHERE id = ?", (uuid,))
-                    connection.commit()
+    rs = connection.execute("SELECT id, parameters FROM vote").fetchall()
+    if rs:
+        for result in rs:
+            uuid = result[0]
+            dvote = json.loads(result[1])
+            if not dvote["active"]:
+                connection.execute("DELETE FROM vote WHERE id = ?", (uuid,))
+                connection.commit()
     await ia.send("Done")
     await ia.delete_original_message()
+
+
+@bot.slash_command()
+async def status(ia: Interaction):
+    """
+
+    """
+    base_url = "https://wodstatus.de/api/v1"
+    r = s.get(f"{base_url}/components/groups")
+    data = r.json()["data"]
+    msg = ""
+    for group in data:
+        components = group["enabled_components"]
+        table = Table(names=(group["name"], "Status"), dtype=('str', 'str'))
+        for component in components:
+            table.add_row((component["name"], component["status_name"]))
+        msg += table.__str__() + '\n\n'
+    await ia.send(f"```\n{msg}\n```\n\nLivestatus von <https://wodstatus.de>")
 
 
 async def cleanup_vote():
