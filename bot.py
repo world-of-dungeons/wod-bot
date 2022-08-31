@@ -331,7 +331,7 @@ async def wipe_vote(ia: Interaction):
 @bot.slash_command()
 async def status(ia: Interaction):
     """
-
+    Zeige den aktuellen Status der WoD Server an.
     """
     base_url = "https://wodstatus.de/api/v1"
     r = s.get(f"{base_url}/components/groups")
