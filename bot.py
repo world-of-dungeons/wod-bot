@@ -84,6 +84,8 @@ async def on_message(msg: nextcord.Message):
     for matches in re_all.finditer(msg.content):
         matches = matches.groupdict()
         for key, value in matches.items():
+            if value is not None and "|" in value:
+                value = value.split("|")[0]
             if value is None or value in processed:
                 continue
             processed.append(value)
