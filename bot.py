@@ -11,6 +11,7 @@ from uuid import uuid4
 import nextcord
 import requests
 from astropy.table import Table
+from astropy import conf as astropy_conf
 from bs4 import BeautifulSoup
 from nextcord import Interaction
 from nextcord.ext import commands, tasks
@@ -27,6 +28,8 @@ re_all = re.compile(
     "\\[skill: ?(?P<skill>.+?)]|\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]|\\[hero: ?(?P<hero>.+?)]|\\[player: ?(?P<player>.+?)]")
 
 locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
+astropy_conf.max_lines = -1
+astropy_conf.max_width = -1
 s = requests.Session()
 
 if not os.path.exists("database.sqlite"):
@@ -209,7 +212,7 @@ async def seen(ia: Interaction, member: nextcord.Member):
 async def stats(ia: Interaction):
     """Globale Nutzungsstatistiken."""
     data = Table(names=("Nutzer", "Nachrichten", "Reactions"), dtype=('str', 'int32', 'int32'))
-    rs = connection.execute("SELECT id,messages,reactions FROM stats WHERE guild = ?", (ia.guild.id,)).fetchall()
+    rs = connection.execute("SELECT id,messages,reactions FROM stats WHERE guild = ? ORDER BY messages DESC, reactions DESC", (ia.guild.id,)).fetchall()
     for key, messages, reactions in rs:
         member = ia.guild.get_member(int(key))
         if member:
