@@ -219,7 +219,7 @@ async def stats(ia: Interaction):
             messages = messages if messages is not None else 0
             reactions = reactions if reactions is not None else 0
             data.add_row((member.name, messages, reactions))
-    await ia.send(f"```\n{data}\n```")
+    await ia.send(f"```\n{data.__str__()[:1980]}\n```")
 
 
 @bot.slash_command()
