@@ -1,0 +1,21 @@
+{
+  "LINK_TO_POST": "Link to post",
+  "LINK_TO_ITEM": "Link to item",
+  "LINK_TO_CLAN": "Link to clan",
+  "LINK_TO_GROUP": "Link to group",
+  "LINK_TO_HERO": "Link to hero",
+  "LINK_TO_PLAYER": "Link to player",
+  "LINK_TO_SKILL": "Link to skill",
+  "SEARCH_RESULT": "Here is your search result",
+  "JOINED_IN": "joined in",
+  "CURRENTLY_ONLINE": "is currently online!",
+  "LAST_SEEN_1": "last seen on",
+  "LAST_SEEN_2": "",
+  "VOTE_STARTED_FROM": "Vote started from",
+  "VOTE_ACTIVE": "Vote activ - Votes are final.",
+  "VOTE_STARTED": "Vote started",
+  "QUESTION": "Question",
+  "VOTE_ENDED": "Vote finished",
+  "LIVESTATUS_FROM": "Live status from",
+  "DIRECT_LINK": "Direct link"
+}

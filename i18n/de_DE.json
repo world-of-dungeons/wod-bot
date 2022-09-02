@@ -1,0 +1,21 @@
+{
+  "LINK_TO_POST": "Link zum Post",
+  "LINK_TO_ITEM": "Link zum Item",
+  "LINK_TO_CLAN": "Link zum Clan",
+  "LINK_TO_GROUP": "Link zur Gruppe",
+  "LINK_TO_HERO": "Link zum Held",
+  "LINK_TO_PLAYER": "Link zum Spieler",
+  "LINK_TO_SKILL": "Link zum Skill",
+  "SEARCH_RESULT": "Hier ist dein Suchergebnis",
+  "JOINED_IN": "joined in",
+  "CURRENTLY_ONLINE": "ist gerade online!",
+  "LAST_SEEN_1": "wurde zuletzt am",
+  "LAST_SEEN_2": "gesehen!",
+  "VOTE_STARTED_FROM": "Abstimmung gestartet von",
+  "VOTE_ACTIVE": "Abstimmung aktiv - Abgegebene Stimmen sind endgültig.",
+  "VOTE_STARTED": "Abstimmung gestartet",
+  "QUESTION": "Frage",
+  "VOTE_ENDED": "Abstimmung beendet",
+  "LIVESTATUS_FROM": "Livestatus von",
+  "DIRECT_LINK": "Direktlink"
+}

@@ -21,8 +21,7 @@ from secrets import TOKEN
 
 intents = nextcord.Intents.all()
 
-bot = commands.Bot(command_prefix='!', intents=intents, help_command=None,
-                   activity=nextcord.Game(name="World of Dungeons", type=2))
+bot = commands.Bot(intents=intents, help_command=None, activity=nextcord.Game(name="World of Dungeons", type=2))
 
 re_all = re.compile(
     "\\[skill: ?(?P<skill>.+?)]|\\[item: ?(?P<item>.+?)]|\\[post: ?(?P<post>.+)]|\\[pcom: ?(?P<pcom>[0-9a-z_]+)]|\\[group: ?(?P<group>.+?)]|\\[clan: ?(?P<clan>.+?)]|\\[hero: ?(?P<hero>.+?)]|\\[player: ?(?P<player>.+?)]")
@@ -41,6 +40,9 @@ with sqlite3.connect("database.sqlite") as connection:  # Will not auto close, b
 
 with open("settings.json", "r") as f:
     bot.settings = json.load(f)
+
+with open(f"i18n/{bot.settings['language']}.json", "r") as f:
+    bot.i18n = json.load(f)
 
 
 @bot.event
@@ -91,11 +93,11 @@ async def on_message(msg: nextcord.Message):
             if "post" == key:
                 for world in bot.settings["worlds"]:
                     text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/forum/viewtopic.php?pid={value}#{value})\n"
-                embed.add_field(name="Link zum Post", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_POST"], value=text, inline=False)
             elif "pcom" == key:
                 world_id, cat, post_id = value.split("_")
                 world = bot.settings["worlds_short"]
-                embed.add_field(name="Link zum Post",
+                embed.add_field(name=bot.i18n["LINK_TO_POST"],
                                 value=f"[{post_id}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/forum/viewtopic.php?pid={post_id}&board={cat}#{post_id})",
                                 inline=False)
             elif "item" == key:
@@ -107,7 +109,7 @@ async def on_message(msg: nextcord.Message):
                 else:
                     for world in bot.settings["worlds"]:
                         text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
-                embed.add_field(name="Link zum Item", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_ITEM"], value=text, inline=False)
             elif "clan" == key:
                 if "@" in value:
                     name, world = value.split("@")
@@ -117,7 +119,7 @@ async def on_message(msg: nextcord.Message):
                 else:
                     for world in bot.settings["worlds"]:
                         text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(value)})\n"
-                embed.add_field(name="Link zum Clan", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_CLAN"], value=text, inline=False)
             elif "group" == key:
                 if "@" in value:
                     name, world = value.split("@")
@@ -127,7 +129,7 @@ async def on_message(msg: nextcord.Message):
                 else:
                     for world in bot.settings["worlds"]:
                         text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(value)})\n"
-                embed.add_field(name="Link zur Gruppe", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_GROUP"], value=text, inline=False)
             elif "hero" == key:
                 if "@" in value:
                     name, world = value.split("@")
@@ -137,7 +139,7 @@ async def on_message(msg: nextcord.Message):
                 else:
                     for world in bot.settings["worlds"]:
                         text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(value)})\n"
-                embed.add_field(name="Link zum Held", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_HERO"], value=text, inline=False)
             elif "player" == key:
                 if "@" in value:
                     name, world = value.split("@")
@@ -147,7 +149,7 @@ async def on_message(msg: nextcord.Message):
                 else:
                     for world in bot.settings["worlds"]:
                         text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(value)})\n"
-                embed.add_field(name="Link zum Held", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_PLAYER"], value=text, inline=False)
             elif "skill" == key:
                 if "@" in value:
                     name, world = value.split("@")
@@ -157,7 +159,7 @@ async def on_message(msg: nextcord.Message):
                 else:
                     for world in bot.settings["worlds"]:
                         text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/skill.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
-                embed.add_field(name="Link zum Skill", value=text, inline=False)
+                embed.add_field(name=bot.i18n["LINK_TO_SKILL"], value=text, inline=False)
     if len(embed.fields) > 0:
         await msg.reply(embed=embed)
     await bot.process_commands(msg)
@@ -175,13 +177,11 @@ async def wiki(ia: Interaction, suche: str):
         'format': 'json',
     }
     r = s.get(f"{bot.settings['wiki_url']}/api.php", params=params)
-    print(r.url)
     embed = nextcord.Embed()
-    embed.title = "Hier ist dein Suchergebnis:"
+    embed.title = f'{bot.i18n["SEARCH_RESULT"]}:'
     wiki_result_to_embed(embed, r)
     params.update({'srwhat': 'text'})
     r = s.get(f"{bot.settings['wiki_url']}/api.php", params=params)
-    print(r.url)
     wiki_result_to_embed(embed, r)
     await ia.send(embed=embed)
 
@@ -189,7 +189,7 @@ async def wiki(ia: Interaction, suche: str):
 @bot.slash_command()
 async def joined(ia: Interaction, member: nextcord.Member):
     """Seit wann ist ein Nutzer Mitglied des Servers?"""
-    await ia.send(f'{member.name} joined in {member.joined_at}')
+    await ia.send(f'{member.name} {bot.i18n["JOINED_IN"]} {member.joined_at}')
 
 
 @bot.slash_command()
@@ -197,10 +197,10 @@ async def seen(ia: Interaction, member: nextcord.Member):
     """Wann war der Nutzer zuletzt aktiv?"""
     current_status = member.raw_status
     if current_status in ("online", "dnd", "idle"):
-        await ia.send(f'{member.name} ist gerade online!')
+        await ia.send(f'{member.name} {bot.i18n["CURRENTLY_ONLINE"]}')
     else:
         last_seen = connection.execute(f"SELECT time FROM presences WHERE id = ?", (member.id,)).fetchone()[0]
-        await ia.send(f'{member.name} wurde zuletzt am {last_seen} gesehen!')
+        await ia.send(f'{member.name} {bot.i18n["LAST_SEEN_1"]} {last_seen} {bot.i18n["LAST_SEEN_2"]}')
 
 
 @bot.slash_command()
@@ -234,7 +234,7 @@ async def vote_start(ia: Interaction, frage: str, optionen: str):
         "channel": ia.channel.id
     }
     embed = nextcord.Embed()
-    embed.title = f"Abstimmung gestartet von {ia.user}"
+    embed.title = f"{bot.i18n['VOTE_STARTED_FROM']} {ia.user}"
     embed.description = frage
     options = optionen.split("+")
     view: View = View(timeout=0)
@@ -245,11 +245,11 @@ async def vote_start(ia: Interaction, frage: str, optionen: str):
         })
         embed.add_field(name=option, value=0, inline=False)
         view.add_item(PollButton(label=option, uuid=uuid))
-    embed.set_footer(text=f"Abstimmung aktiv - Abgegebene Stimmen sind endgültig.")
+    embed.set_footer(text=f"{bot.i18n['VOTE_ACTIVE']}")
     await ia.send(embed=embed, view=view)
     sent = await ia.original_message()
     dvote |= {"id": sent.id}
-    await ia.user.send(f"```Abstimmung gestartet:\n\nID: {uuid}\nFrage: {frage}```")
+    await ia.user.send(f"```{bot.i18n['VOTE_STARTED']}:\n\nID: {uuid}\n{bot.i18n['QUESTION']}: {frage}```")
     connection.execute("INSERT INTO vote (id, parameters) VALUES (?, ?)", (uuid, json.dumps(dvote)))
     connection.commit()
 
@@ -269,7 +269,7 @@ async def vote_end(ia: Interaction, id: str):
                 connection.execute("UPDATE vote SET parameters = ? WHERE id = ?", (json.dumps(dvote), id))
                 connection.commit()
                 await update_vote_message(vote_message, dvote)
-                await vote_message.reply("Abstimmung beendet")
+                await vote_message.reply(bot.i18n['VOTE_ENDED'])
                 await ia.send("Done")
                 await ia.delete_original_message()
 
@@ -312,7 +312,7 @@ async def status(ia: Interaction):
         for component in components:
             table.add_row((component["name"], component["status_name"]))
         msg += table.__str__() + '\n\n'
-    await ia.send(f"```\n{msg}\n```\n\nLivestatus von <https://wodstatus.de>")
+    await ia.send(f"```\n{msg}\n```\n\n{bot.i18n['LIVESTATUS_FROM']} <https://wodstatus.de>")
 
 
 # FIXME: Hide from normal users?
@@ -360,9 +360,9 @@ async def cleanup_vote():
                     connection.commit()
                     msg = bot.get_channel(dvote["channel"]).get_partial_message(dvote["id"])
                     embed = nextcord.Embed()
-                    embed.title = f"Abstimmung gestartet von {msg.guild.get_member(int(dvote['author']))}"
+                    embed.title = f"{bot.i18n['VOTE_STARTED_FROM']} {msg.guild.get_member(int(dvote['author']))}"
                     embed.description = dvote["message"]
-                    embed.set_footer(text=f"Abstimmung beendet: {dvote['finished']}")
+                    embed.set_footer(text=f"{bot.i18n['VOTE_ENDED']}: {dvote['finished']}")
                     await msg.edit(embed=embed, view=None)
                 except Exception:
                     pass
@@ -370,17 +370,17 @@ async def cleanup_vote():
 
 async def update_vote_message(msg: nextcord.Message, dvote: dict):
     embed = nextcord.Embed()
-    embed.title = f"Abstimmung gestartet von {msg.guild.get_member(int(dvote['author']))}"
+    embed.title = f"{bot.i18n['VOTE_STARTED_FROM']} {msg.guild.get_member(int(dvote['author']))}"
     embed.description = dvote["message"]
     for option in dvote["options"]:
         option_value = option["option"]
         count = option["count"]
         embed.add_field(name=option_value, value=count, inline=False)
     if dvote["active"]:
-        embed.set_footer(text="Abstimmung aktiv - Abgegebene Stimmen sind endgültig.")
+        embed.set_footer(text=bot.i18n['VOTE_ACTIVE'])
         await msg.edit(embed=embed)
     else:
-        embed.set_footer(text=f"Abstimmung beendet: {dvote['finished']}")
+        embed.set_footer(text=f"{bot.i18n['VOTE_ENDED']}: {dvote['finished']}")
         await msg.edit(embed=embed, view=None)
 
 
@@ -388,7 +388,7 @@ def wiki_result_to_embed(embed: nextcord.Embed, r: requests.Response):
     for result in json.loads(r.text)['query']['search']:
         text = f"""
            {html.unescape(BeautifulSoup(result['snippet'], 'html.parser').get_text())}
-           Direktlink: [{result['title']}](https://world-of-dungeons.de/ency/{result['title'].replace(' ', '_')})
+           {bot.i18n['DIRECT_LINK']}: [{result['title']}](https://world-of-dungeons.de/ency/{result['title'].replace(' ', '_')})
            """
         embed.add_field(name=result['title'], value=text, inline=False)
 
