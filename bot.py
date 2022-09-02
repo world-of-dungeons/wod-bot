@@ -297,6 +297,24 @@ async def reset_status():
     await bot.change_presence(activity=nextcord.Game(name="World of Dungeons", type=2))
 
 
+@bot.slash_command()
+async def status(ia: Interaction):
+    """
+    Zeige den aktuellen Status der WoD Server an.
+    """
+    base_url = "https://wodstatus.de/api/v1"
+    r = s.get(f"{base_url}/components/groups")
+    data = r.json()["data"]
+    msg = ""
+    for group in data:
+        components = group["enabled_components"]
+        table = Table(names=(group["name"], "Status"), dtype=('str', 'str'))
+        for component in components:
+            table.add_row((component["name"], component["status_name"]))
+        msg += table.__str__() + '\n\n'
+    await ia.send(f"```\n{msg}\n```\n\nLivestatus von <https://wodstatus.de>")
+
+
 # FIXME: Hide from normal users?
 @bot.slash_command()
 @commands.check_any(commands.is_owner(), commands.has_permissions(administrator=True))
@@ -327,24 +345,6 @@ async def wipe_vote(ia: Interaction):
                 connection.commit()
     await ia.send("Done")
     await ia.delete_original_message()
-
-
-@bot.slash_command()
-async def status(ia: Interaction):
-    """
-    Zeige den aktuellen Status der WoD Server an.
-    """
-    game_domain = "https://wodstatus.de/api/v1"
-    r = s.get(f"{game_domain}/components/groups")
-    data = r.json()["data"]
-    msg = ""
-    for group in data:
-        components = group["enabled_components"]
-        table = Table(names=(group["name"], "Status"), dtype=('str', 'str'))
-        for component in components:
-            table.add_row((component["name"], component["status_name"]))
-        msg += table.__str__() + '\n\n'
-    await ia.send(f"```\n{msg}\n```\n\nLivestatus von <https://wodstatus.de>")
 
 
 async def cleanup_vote():
