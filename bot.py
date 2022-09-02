@@ -10,8 +10,8 @@ from uuid import uuid4
 
 import nextcord
 import requests
-from astropy.table import Table
 from astropy import conf as astropy_conf
+from astropy.table import Table
 from bs4 import BeautifulSoup
 from nextcord import Interaction
 from nextcord.ext import commands, tasks
@@ -39,13 +39,8 @@ if not os.path.exists("database.sqlite"):
 with sqlite3.connect("database.sqlite") as connection:  # Will not auto close, but makes sure to have consistent state
     pass
 
-bot.worlds = ["Algarion", "Barkladesh", "Cartegon", "Darakesh"]
-bot.worlds_short = {
-    "wa": "Algarion",
-    "wb": "Barkladesh",
-    "wc": "Cartegon",
-    "wd": "Darakesh",
-}
+with open("settings.json", "r") as f:
+    bot.settings = json.load(f)
 
 
 @bot.event
@@ -94,74 +89,74 @@ async def on_message(msg: nextcord.Message):
             processed.append(value)
             text = ""
             if "post" == key:
-                for world in bot.worlds:
-                    text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/forum/viewtopic.php?pid={value}#{value})\n"
+                for world in bot.settings["worlds"]:
+                    text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/forum/viewtopic.php?pid={value}#{value})\n"
                 embed.add_field(name="Link zum Post", value=text, inline=False)
             elif "pcom" == key:
                 world_id, cat, post_id = value.split("_")
-                world = bot.worlds_short.get(world_id, "Algarion")
+                world = bot.settings["worlds_short"]
                 embed.add_field(name="Link zum Post",
-                                value=f"[{post_id}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/forum/viewtopic.php?pid={post_id}&board={cat}#{post_id})",
+                                value=f"[{post_id}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/forum/viewtopic.php?pid={post_id}&board={cat}#{post_id})",
                                 inline=False)
             elif "item" == key:
                 if "@" in value:
                     name, world = value.split("@")
-                    if world not in bot.worlds and world.lower() in bot.worlds_short:
-                        world = bot.worlds_short[world.lower()]
-                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(name)}&IS_POPUP=1&is_popup=1)\n"
+                    if world not in bot.settings["worlds"] and world.lower() in bot.settings["worlds_short"]:
+                        world = bot.settings["worlds_short"][world.lower()]
+                    text += f"[{name}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(name)}&IS_POPUP=1&is_popup=1)\n"
                 else:
-                    for world in bot.worlds:
-                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
+                    for world in bot.settings["worlds"]:
+                        text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/item.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
                 embed.add_field(name="Link zum Item", value=text, inline=False)
             elif "clan" == key:
                 if "@" in value:
                     name, world = value.split("@")
-                    if world not in bot.worlds and world.lower() in bot.worlds_short:
-                        world = bot.worlds_short[world.lower()]
-                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(name)})\n"
+                    if world not in bot.settings["worlds"] and world.lower() in bot.settings["worlds_short"]:
+                        world = bot.settings["worlds_short"][world.lower()]
+                    text += f"[{name}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(name)})\n"
                 else:
-                    for world in bot.worlds:
-                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(value)})\n"
+                    for world in bot.settings["worlds"]:
+                        text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/clan/clan.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zum Clan", value=text, inline=False)
             elif "group" == key:
                 if "@" in value:
                     name, world = value.split("@")
-                    if world not in bot.worlds and world.lower() in bot.worlds_short:
-                        world = bot.worlds_short[world.lower()]
-                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(name)})\n"
+                    if world not in bot.settings["worlds"] and world.lower() in bot.settings["worlds_short"]:
+                        world = bot.settings["worlds_short"][world.lower()]
+                    text += f"[{name}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(name)})\n"
                 else:
-                    for world in bot.worlds:
-                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(value)})\n"
+                    for world in bot.settings["worlds"]:
+                        text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/dungeon/group.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zur Gruppe", value=text, inline=False)
             elif "hero" == key:
                 if "@" in value:
                     name, world = value.split("@")
-                    if world not in bot.worlds and world.lower() in bot.worlds_short:
-                        world = bot.worlds_short[world.lower()]
-                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(name)})\n"
+                    if world not in bot.settings["worlds"] and world.lower() in bot.settings["worlds_short"]:
+                        world = bot.settings["worlds_short"][world.lower()]
+                    text += f"[{name}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(name)})\n"
                 else:
-                    for world in bot.worlds:
-                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(value)})\n"
+                    for world in bot.settings["worlds"]:
+                        text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/profile.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zum Held", value=text, inline=False)
             elif "player" == key:
                 if "@" in value:
                     name, world = value.split("@")
-                    if world not in bot.worlds and world.lower() in bot.worlds_short:
-                        world = bot.worlds_short[world.lower()]
-                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(name)})\n"
+                    if world not in bot.settings["worlds"] and world.lower() in bot.settings["worlds_short"]:
+                        world = bot.settings["worlds_short"][world.lower()]
+                    text += f"[{name}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(name)})\n"
                 else:
-                    for world in bot.worlds:
-                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(value)})\n"
+                    for world in bot.settings["worlds"]:
+                        text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/profiles/player.php?name={urllib.parse.quote_plus(value)})\n"
                 embed.add_field(name="Link zum Held", value=text, inline=False)
             elif "skill" == key:
                 if "@" in value:
                     name, world = value.split("@")
-                    if world not in bot.worlds and world.lower() in bot.worlds_short:
-                        world = bot.worlds_short[world.lower()]
-                    text += f"[{name}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/skill.php?name={urllib.parse.quote_plus(name)}&IS_POPUP=1&is_popup=1)\n"
+                    if world not in bot.settings["worlds"] and world.lower() in bot.settings["worlds_short"]:
+                        world = bot.settings["worlds_short"][world.lower()]
+                    text += f"[{name}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/skill.php?name={urllib.parse.quote_plus(name)}&IS_POPUP=1&is_popup=1)\n"
                 else:
-                    for world in bot.worlds:
-                        text += f"[{value}@{world}](https://{world}.world-of-dungeons.de/wod/spiel/hero/skill.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
+                    for world in bot.settings["worlds"]:
+                        text += f"[{value}@{world}](https://{world}.{bot.settings['game_domain']}/wod/spiel/hero/skill.php?name={urllib.parse.quote_plus(value)}&IS_POPUP=1&is_popup=1)\n"
                 embed.add_field(name="Link zum Skill", value=text, inline=False)
     if len(embed.fields) > 0:
         await msg.reply(embed=embed)
@@ -179,13 +174,13 @@ async def wiki(ia: Interaction, suche: str):
         'utf8': '',
         'format': 'json',
     }
-    r = s.get("http://wiki.world-of-dungeons.de/wiki/api.php", params=params)
+    r = s.get(f"{bot.settings['wiki_url']}/api.php", params=params)
     print(r.url)
     embed = nextcord.Embed()
     embed.title = "Hier ist dein Suchergebnis:"
     wiki_result_to_embed(embed, r)
     params.update({'srwhat': 'text'})
-    r = s.get("http://wiki.world-of-dungeons.de/wiki/api.php", params=params)
+    r = s.get(f"{bot.settings['wiki_url']}/api.php", params=params)
     print(r.url)
     wiki_result_to_embed(embed, r)
     await ia.send(embed=embed)
@@ -212,7 +207,9 @@ async def seen(ia: Interaction, member: nextcord.Member):
 async def stats(ia: Interaction):
     """Globale Nutzungsstatistiken."""
     data = Table(names=("Nutzer", "Nachrichten", "Reactions"), dtype=('str', 'int32', 'int32'))
-    rs = connection.execute("SELECT id,messages,reactions FROM stats WHERE guild = ? ORDER BY messages DESC, reactions DESC", (ia.guild.id,)).fetchall()
+    rs = connection.execute(
+        "SELECT id,messages,reactions FROM stats WHERE guild = ? ORDER BY messages DESC, reactions DESC",
+        (ia.guild.id,)).fetchall()
     for key, messages, reactions in rs:
         member = ia.guild.get_member(int(key))
         if member:
@@ -283,7 +280,8 @@ async def kekse(ia: Interaction):
     if ia.user.id == 182156526612512769:
         reset_kekse.cancel()
         await ia.send("Hier sind Ihre Kekse :cookie: und ein heißer Kakao :coffee: werte Keksgöttin :bow:!")
-        await bot.change_presence(activity=nextcord.Activity(type=nextcord.ActivityType.listening, name="der Keksgöttin"))
+        await bot.change_presence(
+            activity=nextcord.Activity(type=nextcord.ActivityType.listening, name="der Keksgöttin"))
         reset_kekse.start()
     else:
         await ia.send("Hier sind deine Kekse :cookie:!")
@@ -336,8 +334,8 @@ async def status(ia: Interaction):
     """
     Zeige den aktuellen Status der WoD Server an.
     """
-    base_url = "https://wodstatus.de/api/v1"
-    r = s.get(f"{base_url}/components/groups")
+    game_domain = "https://wodstatus.de/api/v1"
+    r = s.get(f"{game_domain}/components/groups")
     data = r.json()["data"]
     msg = ""
     for group in data:

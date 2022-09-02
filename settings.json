@@ -1,0 +1,16 @@
+{
+  "worlds": [
+    "Algarion",
+    "Barkladesh",
+    "Cartegon",
+    "Darakesh"
+  ],
+  "worlds_short": {
+    "wa": "Algarion",
+    "wb": "Barkladesh",
+    "wc": "Cartegon",
+    "wd": "Darakesh"
+  },
+  "game_domain": "world-of-dungeons.de",
+  "wiki_url": "https://world-of-dungeons.net/ency"
+}
